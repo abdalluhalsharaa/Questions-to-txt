@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Question Organizer (Offline)</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0f1a30;
+      --panel2:#0c162a;
+      --text:#e8eefc;
+      --muted:#a8b3cf;
+      --accent:#6aa6ff;
+      --accent2:#7cffa6;
+      --danger:#ff6a6a;
+      --border:rgba(255,255,255,.12);
+      --shadow: 0 14px 40px rgba(0,0,0,.35);
+      --radius:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family:var(--sans);
+      background: radial-gradient(1200px 700px at 20% 0%, #152a55 0%, var(--bg) 60%);
+      color:var(--text);
+    }
+    header{
+      padding:22px 18px 10px;
+      max-width:1200px;
+      margin:0 auto;
+    }
+    header h1{
+      margin:0 0 6px;
+      font-size:22px;
+      letter-spacing:.2px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
+    .wrap{
+      max-width:1200px;
+      margin:0 auto;
+      padding:14px 18px 28px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card .head{
+      padding:14px 14px 10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(0,0,0,.12);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .card .head h2{
+      margin:0;
+      font-size:14px;
+      letter-spacing:.4px;
+      text-transform:uppercase;
+      color:#dbe6ff;
+    }
+    .meta{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      color:var(--muted);
+      font-size:13px;
+    }
+    .badge{
+      font-size:12px;
+      padding:4px 9px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background: rgba(255,255,255,.03);
+      color: #dbe6ff;
+    }
+    .card .body{
+      padding:14px;
+    }
+    label{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin:12px 0 6px;
+    }
+    input[type="text"], input[type="number"], select, textarea{
+      width:100%;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(0,0,0,.20);
+      color:var(--text);
+      padding:10px 11px;
+      outline:none;
+      font-size:14px;
+    }
+    textarea{
+      min-height:220px;
+      resize:vertical;
+      font-family:var(--mono);
+      line-height:1.35;
+    }
+    input::placeholder, textarea::placeholder{ color: rgba(232,238,252,.45); }
+
+    .row{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+    }
+    @media (min-width: 620px){
+      .row.two{ grid-template-columns: 1fr 1fr; }
+      .row.three{ grid-template-columns: 1.4fr .9fr .7fr; }
+    }
+
+    .btns{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:14px;
+    }
+    button{
+      border:none;
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:600;
+      cursor:pointer;
+      color:#081020;
+      background: var(--accent);
+      transition: transform .05s ease, filter .15s ease;
+      user-select:none;
+    }
+    button:hover{ filter:brightness(1.05); }
+    button:active{ transform: translateY(1px); }
+    button.secondary{
+      background: rgba(255,255,255,.10);
+      color: var(--text);
+      border:1px solid var(--border);
+    }
+    button.danger{
+      background: rgba(255,106,106,.16);
+      color: #ffd7d7;
+      border:1px solid rgba(255,106,106,.35);
+    }
+    button.good{
+      background: rgba(124,255,166,.18);
+      color:#d8ffe6;
+      border:1px solid rgba(124,255,166,.35);
+    }
+
+    .hint{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:8px;
+      line-height:1.35;
+    }
+    .error{
+      font-size:12px;
+      color:#ffd0d0;
+      background: rgba(255,106,106,.12);
+      border:1px solid rgba(255,106,106,.35);
+      padding:10px 11px;
+      border-radius:12px;
+      display:none;
+      margin-top:10px;
+    }
+    .error.show{ display:block; }
+
+    .outbox{
+      border:1px solid var(--border);
+      border-radius:12px;
+      background: rgba(0,0,0,.22);
+      overflow:hidden;
+    }
+    .outbox .toolbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      padding:10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(0,0,0,.12);
+      flex-wrap:wrap;
+    }
+    .outbox .toolbar .title{
+      font-weight:700;
+      font-size:13px;
+      color:#dbe6ff;
+    }
+    pre{
+      margin:0;
+      padding:12px;
+      max-height:360px;
+      overflow:auto;
+      font-family: var(--mono);
+      font-size:13px;
+      line-height:1.35;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+    .kbd{
+      font-family: var(--mono);
+      font-size:12px;
+      padding:2px 6px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background: rgba(255,255,255,.05);
+      color:#dbe6ff;
+    }
+
+    .bottom-actions{
+      margin-top:14px;
+      display:flex;
+      justify-content:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    /* ---------- Confirm Modal ---------- */
+    .modal{
+      position:fixed;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(6px);
+      z-index: 9999;
+    }
+    .modal.show{ display:flex; }
+
+    .modal-card{
+      width:min(560px, 100%);
+      border-radius:18px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      box-shadow: 0 18px 55px rgba(0,0,0,.55);
+      overflow:hidden;
+    }
+    .modal-head{
+      padding:14px 16px 10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(0,0,0,.14);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .modal-title{
+      margin:0;
+      font-size:14px;
+      letter-spacing:.3px;
+      color:#dbe6ff;
+      font-weight:800;
+      text-transform:uppercase;
+    }
+    .modal-body{
+      padding:16px;
+      color:var(--text);
+    }
+    .modal-msg{
+      margin:0;
+      line-height:1.7;
+      color:#eaf0ff;
+      font-size:14px;
+      direction: rtl;
+      text-align: right;
+    }
+    .modal-sub{
+      margin:10px 0 0;
+      font-size:12px;
+      color:var(--muted);
+      direction: rtl;
+      text-align: right;
+    }
+    .modal-actions{
+      padding:14px 16px 16px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      border-top:1px solid var(--border);
+      background: rgba(0,0,0,.10);
+    }
+    .modal-actions button{
+      min-width: 130px;
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>Structured Question Organizer</h1>
+</header>
+
+<main class="wrap">
+  <!-- Inputs -->
+  <section class="card" aria-label="Inputs">
+    <div class="head">
+      <h2>Inputs</h2>
+      <div class="meta">
+        <span class="badge" id="countBadge">Saved: 0</span>
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- Only lecture name and change button remain -->
+      <div class="row two">
+        <div>
+          <label for="lecture">Lecture Name (persistent until "Change Lecture")</label>
+          <input type="text" id="lecture" placeholder="e.g., Obstetrics — Vulva Blood Supply" autocomplete="off" />
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button class="danger" id="changeLectureBtn" type="button" title="Clears ONLY lecture name">
+            Change Lecture
+          </button>
+        </div>
+      </div>
+
+      <label for="question">Question Input (RAW TEXT ONLY — stored exactly as pasted)</label>
+      <textarea id="question" placeholder="Paste the FULL pre-formatted question here (do not edit)..."></textarea>
+
+      <div class="btns">
+        <button id="saveBtn" type="button">Save Question</button>
+        <button class="good" id="generateBtn" type="button">Generate Output</button>
+      </div>
+
+      <div class="hint">
+        <b>Save Question</b> clears only the <span class="kbd">Question</span> field.
+        <b>Lecture</b> remains unchanged unless you manually clear it with "Change Lecture".
+      </div>
+
+      <div id="errorBox" class="error" role="alert"></div>
+    </div>
+  </section>
+
+  <!-- Outputs -->
+  <section class="card" aria-label="Outputs">
+    <div class="head">
+      <h2>Outputs</h2>
+    </div>
+
+    <div class="body">
+      <div class="outbox">
+        <div class="toolbar">
+          <div class="title">Output — Grouped by Lecture</div>
+          <div class="btns" style="margin:0;">
+            <button class="secondary" id="downloadLectureBtn" type="button" disabled>Download TXT</button>
+            <button class="secondary" id="copyLectureBtn" type="button" disabled>Copy</button>
+          </div>
+        </div>
+        <pre id="lectureOut" aria-label="Lecture output"></pre>
+      </div>
+
+      <div class="bottom-actions">
+        <button class="danger" id="clearSessionBtn" type="button">Reset App</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Confirm Modal -->
+<div class="modal" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 class="modal-title" id="confirmTitle">Confirm Reset</h3>
+      <button class="secondary" id="closeModalBtn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-msg">
+        هل أنت متأكد من رغبتك بحذف جميع البيانات ، ستفقد تقدمك ولا يمكن التراجع عن هذا القرار
+      </p>
+      <p class="modal-sub">
+        سيتم حذف كل الأسئلة المحفوظة وإعادة التطبيق للوضع الافتراضي.
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" id="cancelResetBtn" type="button">العودة للعمل</button>
+      <button class="danger" id="confirmResetBtn" type="button">نعم متأكد</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const STORAGE_KEY = "qOrganizer.session.v1";
+
+  const defaultState = {
+    lecture: "",
+    entries: []
+  };
+
+  function loadState() {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return structuredClone(defaultState);
+      const parsed = JSON.parse(raw);
+
+      return {
+        lecture: typeof parsed.lecture === "string" ? parsed.lecture : "",
+        entries: Array.isArray(parsed.entries) ? parsed.entries : []
+      };
+    } catch {
+      return structuredClone(defaultState);
+    }
+  }
+
+  function saveState() {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  const state = loadState();
+
+  // DOM
+  const lectureEl = document.getElementById("lecture");
+  const questionEl = document.getElementById("question");
+
+  const saveBtn = document.getElementById("saveBtn");
+  const changeLectureBtn = document.getElementById("changeLectureBtn");
+  const generateBtn = document.getElementById("generateBtn");
+  const clearSessionBtn = document.getElementById("clearSessionBtn");
+
+  const lectureOutEl = document.getElementById("lectureOut");
+
+  const downloadLectureBtn = document.getElementById("downloadLectureBtn");
+  const copyLectureBtn = document.getElementById("copyLectureBtn");
+
+  const countBadge = document.getElementById("countBadge");
+  const errorBox = document.getElementById("errorBox");
+
+  // Modal DOM
+  const confirmModal = document.getElementById("confirmModal");
+  const confirmResetBtn = document.getElementById("confirmResetBtn");
+  const cancelResetBtn = document.getElementById("cancelResetBtn");
+  const closeModalBtn = document.getElementById("closeModalBtn");
+
+  // ---------- Improved Formatting Logic ----------
+  function formatQuestionText(rawText) {
+    if (!rawText) return rawText;
+    const lines = rawText.split('\n');
+    const resultLines = [];
+
+    const answerLabelRegex = /^\s*Answer\s*:?\s*$/i;
+    const answerInlineRegex = /^\s*(?:Answer|Ans)\s*:?\s*([A-E])\s*[.)\-\s:]*\s*(.*)/i;
+    const answerLetterLineRegex = /^\s*([A-E])\s*[.)\-\s:]\s*(.*)/i;
+
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (answerLabelRegex.test(line)) {
+        if (i + 1 < lines.length && answerLetterLineRegex.test(lines[i + 1])) {
+          const nextLine = lines[i + 1];
+          const match = nextLine.match(answerLetterLineRegex);
+          if (match) {
+            const letter = match[1];
+            const description = match[2] || '';
+            resultLines.push(`Correct Answer: ${letter}) ${description}`.trimEnd());
+            i += 2;
+            continue;
+          }
+        }
+        i++;
+        continue;
+      }
+
+      const inlineMatch = line.match(answerInlineRegex);
+      if (inlineMatch) {
+        const letter = inlineMatch[1];
+        const description = inlineMatch[2] || '';
+        resultLines.push(`Correct Answer: ${letter}) ${description}`.trimEnd());
+        i++;
+        continue;
+      }
+
+      resultLines.push(line);
+      i++;
+    }
+
+    return resultLines.join('\n');
+  }
+  // --------------------------------------
+
+  // Helpers
+  function setError(msg) {
+    if (!msg) {
+      errorBox.textContent = "";
+      errorBox.classList.remove("show");
+      return;
+    }
+    errorBox.textContent = msg;
+    errorBox.classList.add("show");
+  }
+
+  function updateBadge() {
+    countBadge.textContent = `Saved: ${state.entries.length}`;
+  }
+
+  function filenameSafe(str) {
+    return (str || "output")
+      .replace(/[\/\\?%*:|"<>]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80) || "output";
+  }
+
+  function downloadText(filename, content) {
+    try {
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  function enableOutputControls(enabled) {
+    downloadLectureBtn.disabled = !enabled;
+    copyLectureBtn.disabled = !enabled;
+  }
+
+  function openModal() {
+    confirmModal.classList.add("show");
+    cancelResetBtn.focus();
+  }
+  function closeModal() {
+    confirmModal.classList.remove("show");
+    clearSessionBtn.focus();
+  }
+
+  confirmModal.addEventListener("click", (e) => {
+    if (e.target === confirmModal) closeModal();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && confirmModal.classList.contains("show")) closeModal();
+  });
+
+  // Output Builder (without batch, year, page)
+  function buildLectureOutput(entries) {
+    const lectureOrder = [];
+    const map = new Map();
+
+    for (const e of entries) {
+      const key = e.lecture || "";
+      if (!map.has(key)) {
+        map.set(key, []);
+        lectureOrder.push(key);
+      }
+      map.get(key).push(e);
+    }
+
+    const sections = [];
+    for (const lecture of lectureOrder) {
+      const secLines = [];
+      secLines.push(lecture);
+
+      for (const e of map.get(lecture)) {
+        const formattedText = formatQuestionText(e.text);
+        secLines.push(formattedText);
+        secLines.push("###");
+      }
+
+      sections.push(secLines.join("\n"));
+    }
+
+    return sections.join("\n/////\n");
+  }
+
+  // Initialize UI
+  function syncUIFromState() {
+    lectureEl.value = state.lecture;
+    updateBadge();
+  }
+  syncUIFromState();
+
+  lectureEl.addEventListener("input", () => { state.lecture = lectureEl.value; saveState(); });
+
+  // Save Question (only lecture & text required)
+  saveBtn.addEventListener("click", () => {
+    setError("");
+
+    const lecture = lectureEl.value;
+    const text = questionEl.value;
+
+    if (!lecture) return setError('Lecture Name is required (it persists until you click "Change Lecture").');
+    if (!text) return setError("Question Input is empty. Paste the FULL formatted question first.");
+
+    state.entries.push({ lecture, text });
+
+    questionEl.value = "";
+
+    saveState();
+    updateBadge();
+  });
+
+  // Change Lecture
+  changeLectureBtn.addEventListener("click", () => {
+    setError("");
+    state.lecture = "";
+    lectureEl.value = "";
+    saveState();
+  });
+
+  // Generate Output
+  let lastLectureText = "";
+
+  generateBtn.addEventListener("click", () => {
+    setError("");
+
+    if (!state.entries.length) {
+      enableOutputControls(false);
+      lectureOutEl.textContent = "";
+      return setError("No saved questions yet. Save at least one question before generating output.");
+    }
+
+    lastLectureText = buildLectureOutput(state.entries);
+
+    lectureOutEl.textContent = lastLectureText;
+
+    enableOutputControls(true);
+  });
+
+  // Download Button
+  downloadLectureBtn.addEventListener("click", () => {
+    const name = filenameSafe(state.lecture || "lecture-grouped");
+    const ok = downloadText(`${name} - grouped-by-lecture.txt`, lastLectureText || "");
+    if (!ok) setError("Download not supported in this browser. You can still copy the output text.");
+  });
+
+  // Copy Button
+  copyLectureBtn.addEventListener("click", async () => {
+    const ok = await copyToClipboard(lastLectureText || "");
+    if (!ok) setError("Copy failed in this browser. You can manually select and copy the output text.");
+  });
+
+  // Reset flow
+  function doReset() {
+    setError("");
+    sessionStorage.removeItem(STORAGE_KEY);
+
+    state.lecture = "";
+    state.entries = [];
+
+    syncUIFromState();
+    questionEl.value = "";
+
+    lastLectureText = "";
+    lectureOutEl.textContent = "";
+    enableOutputControls(false);
+
+    saveState();
+    updateBadge();
+  }
+
+  clearSessionBtn.addEventListener("click", openModal);
+  confirmResetBtn.addEventListener("click", () => { doReset(); closeModal(); });
+  cancelResetBtn.addEventListener("click", closeModal);
+  closeModalBtn.addEventListener("click", closeModal);
+
+  // Initialize
+  enableOutputControls(false);
+})();
+</script>
+</body>
+</html>
