@@ -455,48 +455,308 @@
 
   // ---------- Improved Formatting Logic ----------
   function formatQuestionText(rawText) {
-    if (!rawText) return rawText;
-    const lines = rawText.split('\n');
-    const resultLines = [];
+    if (!rawText || typeof rawText !== "string") return rawText;
 
-    const answerLabelRegex = /^\s*Answer\s*:?\s*$/i;
-    const answerInlineRegex = /^\s*(?:Answer|Ans)\s*:?\s*([A-E])\s*[.)\-\s:]*\s*(.*)/i;
-    const answerLetterLineRegex = /^\s*([A-E])\s*[.)\-\s:]\s*(.*)/i;
+    const originalLines = rawText.split(/\r?\n/);
+
+    // 1) Extract/remove answer block(s) first while preserving all other lines
+    const extracted = extractAnswerAndRemoveAnswerLines(originalLines);
+    const linesWithoutAnswer = extracted.lines;
+    const rawAnswer = extracted.answerRaw;
+
+    // 2) Normalize option lines only when they appear as a real option block
+    const normalized = normalizeOptionBlocks(linesWithoutAnswer);
+    const outputLines = normalized.lines;
+    const optionsMap = normalized.optionsMap;
+
+    // 3) Resolve final answer into canonical letter/text
+    const resolvedAnswer = resolveCorrectAnswer(rawAnswer, optionsMap);
+
+    // 4) Append exactly one final line for the correct answer
+    if (resolvedAnswer && resolvedAnswer.letter && resolvedAnswer.text) {
+      outputLines.push(`Correct Answer: ${resolvedAnswer.letter}) ${resolvedAnswer.text}`);
+    } else if (resolvedAnswer && resolvedAnswer.letter) {
+      outputLines.push(`Correct Answer: ${resolvedAnswer.letter}`);
+    }
+
+    return outputLines.join("\n");
+  }
+
+  function extractAnswerAndRemoveAnswerLines(lines) {
+    const kept = [];
+    let answerRaw = "";
 
     let i = 0;
     while (i < lines.length) {
-      const line = lines[i];
+      const parsed = parseAnswerAt(lines, i);
 
-      if (answerLabelRegex.test(line)) {
-        if (i + 1 < lines.length && answerLetterLineRegex.test(lines[i + 1])) {
-          const nextLine = lines[i + 1];
-          const match = nextLine.match(answerLetterLineRegex);
-          if (match) {
-            const letter = match[1];
-            const description = match[2] || '';
-            resultLines.push(`Correct Answer: ${letter}) ${description}`.trimEnd());
-            i += 2;
-            continue;
-          }
+      if (parsed.matched) {
+        if (!answerRaw && parsed.answerRaw) {
+          answerRaw = parsed.answerRaw.trim();
         }
-        i++;
+        i += parsed.consumed;
         continue;
       }
 
-      const inlineMatch = line.match(answerInlineRegex);
-      if (inlineMatch) {
-        const letter = inlineMatch[1];
-        const description = inlineMatch[2] || '';
-        resultLines.push(`Correct Answer: ${letter}) ${description}`.trimEnd());
-        i++;
-        continue;
-      }
-
-      resultLines.push(line);
+      kept.push(lines[i]);
       i++;
     }
 
-    return resultLines.join('\n');
+    return { lines: kept, answerRaw };
+  }
+
+  function parseAnswerAt(lines, index) {
+    const current = lines[index] ?? "";
+    const currentStripped = stripLeadMarkers(current).trim();
+
+    // Case:
+    // ✔ CORRECT
+    // ANSWER:
+    // L5–S1
+    if (/^correct$/i.test(currentStripped)) {
+      const next = lines[index + 1] ?? "";
+      const nextStripped = stripLeadMarkers(next).trim();
+      const m = nextStripped.match(/^(?:answer|ans)\s*:?\s*(.*)$/i);
+
+      if (m) {
+        let answerText = (m[1] || "").trim();
+        let consumed = 2;
+
+        if (!answerText) {
+          const looked = findNextNonEmptyLine(lines, index + 2);
+          if (looked) {
+            answerText = looked.text.trim();
+            consumed = looked.index - index + 1;
+          }
+        }
+
+        return {
+          matched: true,
+          consumed,
+          answerRaw: answerText
+        };
+      }
+    }
+
+    // Case:
+    // CORRECT ANSWER: ...
+    // Answer: ...
+    // Ans: ...
+    const inlineMatch = currentStripped.match(
+      /^(?:correct\s*answer|answer|ans)\s*:?\s*(.*)$/i
+    );
+
+    if (inlineMatch) {
+      let answerText = (inlineMatch[1] || "").trim();
+      let consumed = 1;
+
+      // Handle:
+      // Answer:
+      // L5–S1
+      if (!answerText) {
+        const looked = findNextNonEmptyLine(lines, index + 1);
+        if (looked) {
+          answerText = looked.text.trim();
+          consumed = looked.index - index + 1;
+        }
+      }
+
+      return {
+        matched: true,
+        consumed,
+        answerRaw: answerText
+      };
+    }
+
+    return { matched: false, consumed: 1, answerRaw: "" };
+  }
+
+  function findNextNonEmptyLine(lines, startIndex) {
+    for (let i = startIndex; i < lines.length; i++) {
+      const text = (lines[i] ?? "").trim();
+      if (text) {
+        return { index: i, text: lines[i] };
+      }
+    }
+    return null;
+  }
+
+  function stripLeadMarkers(text) {
+    return String(text || "").replace(/^[\s\u2714\u2713\u25A0\u25AA\u25CF\u2022\u2023\u2043\u2219•▪■✓✔]+/, "");
+  }
+
+  function normalizeOptionBlocks(lines) {
+    const out = lines.slice();
+    const optionsMap = {};
+    const candidateInfo = lines.map(line => parseOptionCandidate(line));
+
+    let i = 0;
+    while (i < lines.length) {
+      if (!candidateInfo[i]) {
+        i++;
+        continue;
+      }
+
+      let j = i;
+      const run = [];
+      while (j < lines.length && candidateInfo[j]) {
+        run.push({ index: j, ...candidateInfo[j] });
+        j++;
+      }
+
+      // Normalize only if this is a real option block
+      if (isSequentialOptionRun(run)) {
+        for (const item of run) {
+          const letter = item.letter.toUpperCase();
+          const text = cleanOptionText(item.text);
+          out[item.index] = `${letter}) ${text}`;
+          if (!optionsMap[letter]) {
+            optionsMap[letter] = text;
+          }
+        }
+      }
+
+      i = j;
+    }
+
+    return { lines: out, optionsMap };
+  }
+
+  function parseOptionCandidate(line) {
+    if (line == null) return null;
+
+    const raw = String(line);
+    const trimmed = raw.trim();
+
+    if (!trimmed) return null;
+
+    const stripped = stripLeadMarkers(trimmed);
+    if (/^(?:correct\s*answer|answer|ans)\s*:?/i.test(stripped)) return null;
+    if (/^correct$/i.test(stripped)) return null;
+
+    // Accepted:
+    // A. Text
+    // A Text
+    // A: Text
+    // A) Text
+    const match = trimmed.match(/^\s*([A-Ea-e])(?:\s*[\.\):]\s*|\s+)(.+?)\s*$/);
+    if (!match) return null;
+
+    return {
+      letter: match[1].toUpperCase(),
+      text: match[2]
+    };
+  }
+
+  function isSequentialOptionRun(run) {
+    if (!Array.isArray(run) || run.length < 2) return false;
+
+    for (let k = 0; k < run.length; k++) {
+      const curr = run[k];
+      const code = curr.letter.charCodeAt(0);
+
+      if (curr.letter < "A" || curr.letter > "E") return false;
+
+      if (k > 0) {
+        const prevCode = run[k - 1].letter.charCodeAt(0);
+        if (code !== prevCode + 1) return false;
+      }
+    }
+
+    return true;
+  }
+
+  function cleanOptionText(text) {
+    let t = String(text || "").trim();
+
+    // Prevent duplication like:
+    // A) A. Text
+    // B) B Text
+    t = t.replace(/^\s*([A-Ea-e])(?:\s*[\.\):]\s*|\s+)(.+?)\s*$/, "$2").trim();
+
+    return t;
+  }
+
+  function resolveCorrectAnswer(rawAnswer, optionsMap) {
+    if (!rawAnswer) return null;
+
+    let answer = stripLeadMarkers(rawAnswer).trim();
+    if (!answer) return null;
+
+    // Cases:
+    // A
+    // A) Text
+    // A. Text
+    // A: Text
+    // A Text
+    const letterMatch = answer.match(/^\s*([A-Ea-e])(?:\s*[\)\.\:\-]?\s*(.*))?$/);
+
+    if (letterMatch) {
+      const letter = letterMatch[1].toUpperCase();
+      const trailing = (letterMatch[2] || "").trim();
+
+      if (optionsMap[letter]) {
+        return {
+          letter,
+          text: optionsMap[letter]
+        };
+      }
+
+      if (trailing) {
+        return {
+          letter,
+          text: cleanOptionText(trailing)
+        };
+      }
+
+      return {
+        letter,
+        text: ""
+      };
+    }
+
+    // Answer provided only as text -> compare with available options
+    const normalizedAnswer = normalizeForCompare(answer);
+
+    // Exact match first
+    for (const letter of ["A", "B", "C", "D", "E"]) {
+      if (!optionsMap[letter]) continue;
+      if (normalizeForCompare(optionsMap[letter]) === normalizedAnswer) {
+        return {
+          letter,
+          text: optionsMap[letter]
+        };
+      }
+    }
+
+    // Fallback partial matching
+    for (const letter of ["A", "B", "C", "D", "E"]) {
+      if (!optionsMap[letter]) continue;
+      const optNorm = normalizeForCompare(optionsMap[letter]);
+
+      if (optNorm.includes(normalizedAnswer) || normalizedAnswer.includes(optNorm)) {
+        return {
+          letter,
+          text: optionsMap[letter]
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function normalizeForCompare(text) {
+    return String(text || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/^[\s\u2714\u2713\u25A0\u25AA\u25CF\u2022\u2023\u2043\u2219•▪■✓✔]+/, "")
+      .replace(/^\s*([A-Ea-e])(?:\s*[\.\):]\s*|\s+)(.+?)\s*$/, "$2")
+      .replace(/[‐‑‒–—−]/g, "-")
+      .replace(/[“”״"]/g, '"')
+      .replace(/[‘’']/g, "'")
+      .replace(/[^\p{L}\p{N}\-"'\/\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
   // --------------------------------------
 
@@ -621,9 +881,12 @@
   }
   syncUIFromState();
 
-  lectureEl.addEventListener("input", () => { state.lecture = lectureEl.value; saveState(); });
+  lectureEl.addEventListener("input", () => {
+    state.lecture = lectureEl.value;
+    saveState();
+  });
 
-  // Save Question (only lecture & text required)
+  // Save Question
   saveBtn.addEventListener("click", () => {
     setError("");
 
@@ -662,7 +925,6 @@
     }
 
     lastLectureText = buildLectureOutput(state.entries);
-
     lectureOutEl.textContent = lastLectureText;
 
     enableOutputControls(true);
@@ -701,7 +963,10 @@
   }
 
   clearSessionBtn.addEventListener("click", openModal);
-  confirmResetBtn.addEventListener("click", () => { doReset(); closeModal(); });
+  confirmResetBtn.addEventListener("click", () => {
+    doReset();
+    closeModal();
+  });
   cancelResetBtn.addEventListener("click", closeModal);
   closeModalBtn.addEventListener("click", closeModal);
 
