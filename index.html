@@ -334,6 +334,31 @@
         </div>
       </div>
 
+      <div class="row three">
+        <div>
+          <label for="imageName">Image Name</label>
+          <input
+            type="text"
+            id="imageName"
+            placeholder="e.g. color"
+            disabled
+          />
+        </div>
+
+        <div>
+          <label for="imageExt">Image Type</label>
+          <select id="imageExt" disabled>
+            <option value="jpg">jpg</option>
+            <option value="png">png</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="imageEnabled">Enable Image</label>
+          <input type="checkbox" id="imageEnabled" />
+        </div>
+      </div>
+
       <div class="row two">
         <div>
           <label for="batchName">Batch Name (optional)</label>
@@ -386,7 +411,28 @@
             <button class="secondary" id="copyLectureBtn" type="button" disabled>Copy</button>
           </div>
         </div>
-        <pre id="lectureOut" aria-label="Lecture output"></pre>
+        <textarea
+          id="lectureOut"
+          aria-label="Lecture output"
+          style="
+            margin:0;
+            padding:12px;
+            max-height:360px;
+            min-height:360px;
+            width:100%;
+            overflow:auto;
+            font-family: var(--mono);
+            font-size:13px;
+            line-height:1.35;
+            white-space:pre-wrap;
+            word-break:break-word;
+            border:none;
+            resize:vertical;
+            background:transparent;
+            color:var(--text);
+            outline:none;
+          "
+        ></textarea>
       </div>
 
       <div class="bottom-actions">
@@ -428,6 +474,9 @@
     lecture: "",
     batchEnabled: false,
     batchName: "",
+    imageEnabled: false,
+    imageName: "",
+    imageExt: "jpg",
     entries: []
   };
 
@@ -441,6 +490,18 @@
         lecture: typeof parsed.lecture === "string" ? parsed.lecture : "",
         batchEnabled: typeof parsed.batchEnabled === "boolean" ? parsed.batchEnabled : false,
         batchName: typeof parsed.batchName === "string" ? parsed.batchName : "",
+        imageEnabled:
+          typeof parsed.imageEnabled === "boolean"
+            ? parsed.imageEnabled
+            : false,
+        imageName:
+          typeof parsed.imageName === "string"
+            ? parsed.imageName
+            : "",
+        imageExt:
+          typeof parsed.imageExt === "string"
+            ? parsed.imageExt
+            : "jpg",
         entries: Array.isArray(parsed.entries) ? parsed.entries : []
       };
     } catch {
@@ -458,6 +519,9 @@
   const lectureEl = document.getElementById("lecture");
   const batchEnabledEl = document.getElementById("batchEnabled");
   const batchNameEl = document.getElementById("batchName");
+  const imageEnabledEl = document.getElementById("imageEnabled");
+  const imageNameEl = document.getElementById("imageName");
+  const imageExtEl = document.getElementById("imageExt");
   const questionEl = document.getElementById("question");
 
   const saveBtn = document.getElementById("saveBtn");
@@ -914,6 +978,36 @@
     if (e.key === "Escape" && confirmModal.classList.contains("show")) closeModal();
   });
 
+  function injectImageTag(text, entry) {
+    if (
+      !entry.imageEnabled ||
+      !entry.imageName ||
+      !entry.imageExt
+    ) {
+      return text;
+    }
+
+    const lines = String(text).split(/\r?\n/);
+
+    for (let i = 0; i < lines.length; i++) {
+
+      const trimmed = lines[i].trim();
+
+      if (!trimmed) continue;
+
+      if (/^[A-E]\)/i.test(trimmed)) {
+        lines.splice(
+          i,
+          0,
+          `[img: ${entry.imageName}.${entry.imageExt}]`
+        );
+        break;
+      }
+    }
+
+    return lines.join("\n");
+  }
+
   // Output Builder (without batch, year, page)
   function buildLectureOutput(entries) {
     const lectureOrder = [];
@@ -934,7 +1028,13 @@
       secLines.push(lecture);
 
       for (const e of map.get(lecture)) {
-        const formattedText = formatQuestionText(e.text);
+        let formattedText = formatQuestionText(e.text);
+
+        formattedText = injectImageTag(
+          formattedText,
+          e
+        );
+
         secLines.push(formattedText);
         if (e.batchName) {
           secLines.push(e.batchName);
@@ -954,6 +1054,14 @@
     batchEnabledEl.checked = state.batchEnabled;
     batchNameEl.value = state.batchName;
     batchNameEl.disabled = !state.batchEnabled;
+    
+    imageEnabledEl.checked = state.imageEnabled;
+    imageNameEl.value = state.imageName;
+    imageExtEl.value = state.imageExt;
+
+    imageNameEl.disabled = !state.imageEnabled;
+    imageExtEl.disabled = !state.imageEnabled;
+
     updateBadge();
   }
   syncUIFromState();
@@ -978,6 +1086,32 @@
     saveState();
   });
 
+  imageEnabledEl.addEventListener("change", () => {
+    state.imageEnabled = imageEnabledEl.checked;
+
+    imageNameEl.disabled = !state.imageEnabled;
+    imageExtEl.disabled = !state.imageEnabled;
+
+    if (!state.imageEnabled) {
+      state.imageName = "";
+      imageNameEl.value = "";
+      state.imageExt = "jpg";
+      imageExtEl.value = "jpg";
+    }
+
+    saveState();
+  });
+
+  imageNameEl.addEventListener("input", () => {
+    state.imageName = imageNameEl.value;
+    saveState();
+  });
+
+  imageExtEl.addEventListener("change", () => {
+    state.imageExt = imageExtEl.value;
+    saveState();
+  });
+
   // Save Question
   saveBtn.addEventListener("click", () => {
     setError("");
@@ -989,7 +1123,14 @@
     if (!lecture) return setError('Lecture Name is required (it persists until you click "Change Lecture").');
     if (!text) return setError("Question Input is empty. Paste the FULL formatted question first.");
 
-    state.entries.push({ lecture, text, batchName });
+    state.entries.push({
+      lecture,
+      text,
+      batchName,
+      imageEnabled: state.imageEnabled,
+      imageName: state.imageName,
+      imageExt: state.imageExt
+    });
 
     questionEl.value = "";
 
@@ -1013,12 +1154,12 @@
 
     if (!state.entries.length) {
       enableOutputControls(false);
-      lectureOutEl.textContent = "";
+      lectureOutEl.value = "";
       return setError("No saved questions yet. Save at least one question before generating output.");
     }
 
     lastLectureText = buildLectureOutput(state.entries);
-    lectureOutEl.textContent = lastLectureText;
+    lectureOutEl.value = lastLectureText;
 
     enableOutputControls(true);
   });
@@ -1026,13 +1167,16 @@
   // Download Button
   downloadLectureBtn.addEventListener("click", () => {
     const name = filenameSafe(state.lecture || "lecture-grouped");
-    const ok = downloadText(`${name} - grouped-by-lecture.txt`, lastLectureText || "");
+    const ok = downloadText(
+      `${name} - grouped-by-lecture.txt`,
+      lectureOutEl.value || ""
+    );
     if (!ok) setError("Download not supported in this browser. You can still copy the output text.");
   });
 
   // Copy Button
   copyLectureBtn.addEventListener("click", async () => {
-    const ok = await copyToClipboard(lastLectureText || "");
+    const ok = await copyToClipboard(lectureOutEl.value || "");
     if (!ok) setError("Copy failed in this browser. You can manually select and copy the output text.");
   });
 
@@ -1044,13 +1188,16 @@
     state.lecture = "";
     state.batchEnabled = false;
     state.batchName = "";
+    state.imageEnabled = false;
+    state.imageName = "";
+    state.imageExt = "jpg";
     state.entries = [];
 
     syncUIFromState();
     questionEl.value = "";
 
     lastLectureText = "";
-    lectureOutEl.textContent = "";
+    lectureOutEl.value = "";
     enableOutputControls(false);
 
     saveState();
